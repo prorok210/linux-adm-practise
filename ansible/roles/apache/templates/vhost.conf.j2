@@ -1,0 +1,12 @@
+<VirtualHost *:{{ item }}>
+    DocumentRoot /var/www/server_{{ item }}
+
+    <Directory /var/www/server_{{ item }}>
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/server_{{ item }}_error.log
+    CustomLog ${APACHE_LOG_DIR}/server_{{ item }}_access.log combined
+</VirtualHost>

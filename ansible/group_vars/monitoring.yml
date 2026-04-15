@@ -1,0 +1,23 @@
+prometheus_port: 9090
+grafana_port: 3000
+kibana_port: 5601
+elasticsearch_port: 9200
+logstash_port: 5044
+
+grafana_admin_user: admin
+grafana_admin_password: admin
+
+elk_stack_version: "8.7.1"
+elk_cluster_name: docker-cluster
+elk_license: basic
+
+elastic_user: elastic
+elastic_password: changeme
+kibana_password: changeme
+
+es_mem_limit: 536870912
+kb_mem_limit: 536870912
+ls_mem_limit: 536870912
+elk_mem_limit: 1073741824
+
+kibana_encryption_key: c34d38b3a14956121ff2170e5030b471551370178f43e5626eec58b04a30fae2

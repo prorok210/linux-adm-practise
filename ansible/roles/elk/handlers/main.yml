@@ -1,0 +1,14 @@
+---
+- name: Restart elk
+  ansible.builtin.shell:
+    cmd: |
+      cd /opt/elk
+      docker compose restart es01 kibana logstash01
+      sleep 5
+  when: "'monitoring' in group_names"
+
+- name: Restart filebeat
+  ansible.builtin.service:
+    name: filebeat
+    state: restarted
+  when: "'webservers' in group_names"

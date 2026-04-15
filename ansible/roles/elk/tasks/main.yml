@@ -1,0 +1,191 @@
+---
+- name: Create elk directory
+  ansible.builtin.file:
+    path: /opt/elk
+    state: directory
+    owner: root
+    mode: '0755'
+  when: "'monitoring' in group_names"
+
+- name: Create elasticsearch config directory
+  ansible.builtin.file:
+    path: /opt/elk/es-config
+    state: directory
+    owner: root
+    mode: '0755'
+  when: "'monitoring' in group_names"
+
+- name: Copy elk docker-compose file
+  ansible.builtin.copy:
+    src: elk.docker-compose.yml
+    dest: /opt/elk/docker-compose.yml
+    mode: '0644'
+  when: "'monitoring' in group_names"
+  register: elk_compose_file
+
+- name: Copy logstash config
+  ansible.builtin.copy:
+    src: logstash.conf
+    dest: /opt/elk/logstash.conf
+    mode: '0644'
+  when: "'monitoring' in group_names"
+  register: elk_logstash_conf
+
+- name: Copy elasticsearch jvm config
+  ansible.builtin.copy:
+    src: es-config/
+    dest: /opt/elk/es-config/
+    mode: '0644'
+  when: "'monitoring' in group_names"
+
+- name: Generate .env file
+  ansible.builtin.template:
+    src: elk.env.j2
+    dest: /opt/elk/.env
+    mode: '0600'
+  when: "'monitoring' in group_names"
+  register: elk_env_file
+
+- name: Set max_map_count for kernel
+  ansible.builtin.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+  when: "'monitoring' in group_names"
+
+- name: Wait for compose directory to be ready
+  ansible.builtin.wait_for:
+    path: /opt/elk/docker-compose.yml
+    state: present
+  when: "'monitoring' in group_names"
+
+- name: Start ELK stack via docker-compose
+  ansible.builtin.shell:
+    cmd: |
+      cd /opt/elk
+      docker compose up -d
+      echo "Container state:"
+      docker compose ps
+  when: "'monitoring' in group_names"
+  register: elk_start_result
+  retries: 3
+  delay: 10
+  until: elk_start_result.rc == 0
+  changed_when: "'Created' in elk_start_result.stdout or 'Recreated' in elk_start_result.stdout or 'Started' in elk_start_result.stdout"
+
+- name: Wait for Elasticsearch API readiness
+  ansible.builtin.uri:
+    url: "https://localhost:{{ elasticsearch_port }}"
+    method: GET
+    user: "{{ elastic_user }}"
+    password: "{{ elastic_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: 200
+  when: "'monitoring' in group_names"
+  register: es_api_ready
+  retries: 60
+  delay: 5
+  until: es_api_ready.status == 200
+
+- name: Wait for Kibana readiness
+  ansible.builtin.uri:
+    url: "http://localhost:{{ kibana_port }}"
+    method: GET
+    status_code: [200, 302]
+  when: "'monitoring' in group_names"
+  register: kibana_ready
+  retries: 60
+  delay: 5
+  until: kibana_ready.status in [200, 302]
+
+- name: Verify ELK services are running
+  ansible.builtin.shell:
+    cmd: |
+      cd /opt/elk
+      running_containers=$(docker compose ps --services --filter status=running | wc -l)
+      if [ "$running_containers" -ge 3 ]; then
+        echo "All ELK services running"
+        exit 0
+      else
+        echo "Not all ELK services are running. Current status:"
+        docker compose ps
+        exit 1
+      fi
+  when: "'monitoring' in group_names"
+  retries: 5
+  delay: 5
+  register: elk_verify
+  until: elk_verify.rc == 0
+
+# ============================================
+# Filebeat installation on webservers (VM1)
+# ============================================
+
+- name: Install filebeat dependencies
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - wget
+      - curl
+    state: present
+    update_cache: true
+  when: "'webservers' in group_names"
+
+- name: Add Elastic GPG key
+  ansible.builtin.shell:
+    cmd: wget -qO- https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor > /etc/apt/keyrings/elastic.gpg
+    creates: /etc/apt/keyrings/elastic.gpg
+  when: "'webservers' in group_names"
+
+- name: Add Elastic repository
+  ansible.builtin.copy:
+    content: "deb [signed-by=/etc/apt/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main\n"
+    dest: /etc/apt/sources.list.d/elastic-8.x.list
+    mode: '0644'
+  when: "'webservers' in group_names"
+
+- name: Install filebeat
+  ansible.builtin.apt:
+    name: filebeat
+    state: present
+    update_cache: true
+  when: "'webservers' in group_names"
+
+- name: Deploy filebeat config
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /etc/filebeat/filebeat.yml
+    owner: root
+    group: root
+    mode: '0600'
+  when: "'webservers' in group_names"
+  notify: Restart filebeat
+
+- name: Start filebeat service
+  ansible.builtin.service:
+    name: filebeat
+    state: started
+    enabled: true
+  when: "'webservers' in group_names"
+
+- name: Wait for filebeat to connect
+  ansible.builtin.shell:
+    cmd: |
+      # Give filebeat 10 seconds to connect to logstash
+      sleep 10
+      systemctl is-active --quiet filebeat
+      if [ $? -eq 0 ]; then
+        echo "Filebeat is running"
+        exit 0
+      else
+        echo "Filebeat failed to start"
+        journalctl -u filebeat -n 20
+        exit 1
+      fi
+  when: "'webservers' in group_names"
+  retries: 3
+  delay: 5
+  register: filebeat_check
+  until: filebeat_check.rc == 0

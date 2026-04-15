@@ -1,0 +1,51 @@
+---
+- name: Create prometheus user
+  ansible.builtin.user:
+    name: prometheus
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+- name: Download prometheus
+  ansible.builtin.get_url:
+    url: https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz
+    dest: /tmp/prometheus.tar.gz
+- name: Extract prometheus
+  ansible.builtin.unarchive:
+    src: /tmp/prometheus.tar.gz
+    dest: /tmp/
+    remote_src: true
+- name: Copy binary prometheus
+  ansible.builtin.copy:
+    src: /tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus
+    dest: /usr/local/bin/prometheus
+    mode: '0755'
+    remote_src: true
+  notify: Restart prometheus
+- name: Create data dir
+  ansible.builtin.file:
+    path: /var/lib/prometheus
+    state: directory
+    owner: prometheus
+    group: prometheus
+- name: Create config dir
+  ansible.builtin.file:
+    path: /etc/prometheus
+    state: directory
+    owner: prometheus
+    group: prometheus
+- name: Create prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+  notify: Restart prometheus
+- name: Create systemd unit for prometheus
+  ansible.builtin.template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+  notify: Restart prometheus
+- name: Start prometheus service
+  ansible.builtin.service:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: true

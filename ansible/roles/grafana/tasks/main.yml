@@ -1,0 +1,62 @@
+---
+- name: Install grafana dependencies
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - wget
+    state: present
+    update_cache: true
+- name: Add grafana GPG key
+  ansible.builtin.shell:
+    cmd: >
+      wget -qO- https://apt.grafana.com/gpg.key |
+      gpg --dearmor > /etc/apt/keyrings/grafana.gpg
+    creates: /etc/apt/keyrings/grafana.gpg
+- name: Add grafana repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main
+    state: present
+- name: Install grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+- name: Start grafana service
+  ansible.builtin.service:
+    name: grafana-server
+    state: started
+    enabled: true
+- name: Wait for grafana to start
+  ansible.builtin.wait_for:
+    port: "{{ grafana_port }}"
+    timeout: 30
+- name: Add Prometheus datasource
+  community.grafana.grafana_datasource:
+    grafana_url: "http://localhost:{{ grafana_port }}"
+    grafana_user: "{{ grafana_admin_user }}"
+    grafana_password: "{{ grafana_admin_password }}"
+    name: Prometheus
+    ds_type: prometheus
+    ds_url: "http://{{ vm2_ip }}:{{ prometheus_port }}"
+    access: proxy
+    is_default: true
+    state: present
+
+- name: Import Node Exporter Full dashboard (ID 1860)
+  community.grafana.grafana_dashboard:
+    grafana_url: "http://localhost:{{ grafana_port }}"
+    grafana_user: "{{ grafana_admin_user }}"
+    grafana_password: "{{ grafana_admin_password }}"
+    dashboard_id: 1860
+    dashboard_revision: 37
+    state: present
+
+- name: Import Nginx dashboard (ID 12708)
+  community.grafana.grafana_dashboard:
+    grafana_url: "http://localhost:{{ grafana_port }}"
+    grafana_user: "{{ grafana_admin_user }}"
+    grafana_password: "{{ grafana_admin_password }}"
+    dashboard_id: 12708
+    dashboard_revision: 1
+    state: present

@@ -1,0 +1,21 @@
+---
+
+- name: Configure web server (VM1)
+  hosts: webservers
+  become: true
+  roles:
+    - apache
+    - nginx
+    - docker
+    - node_exporter
+    - nginx_exporter
+    - elk
+
+- name: Configure monitoring server (VM2)
+  hosts: monitoring
+  become: true
+  roles:
+    - docker
+    - prometheus
+    - grafana
+    - elk

@@ -1,0 +1,47 @@
+---
+- name: Install apache2
+  ansible.builtin.apt:
+    name: apache2
+    state: present
+    update_cache: true
+- name: Configure apache ports
+  ansible.builtin.template:
+    src: ports.conf.j2
+    dest: /etc/apache2/ports.conf
+  notify: Restart apache
+- name: Create document roots
+  ansible.builtin.file:
+    path: /var/www/server_{{ item }}
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+  loop: "{{ apache_ports }}"
+- name: Create sites
+  ansible.builtin.copy:
+    content: "<h1>Server {{ item }} </h1>"
+    dest: /var/www/server_{{ item }}/index.html
+  loop: "{{ apache_ports }}"
+- name: Create VirtualHost configs
+  ansible.builtin.template:
+    src: vhost.conf.j2
+    dest: /etc/apache2/sites-available/server_{{ item }}.conf
+  loop: "{{ apache_ports }}"
+  notify: Restart apache
+- name: Enable apache sites
+  ansible.builtin.command:
+    cmd: a2ensite server_{{ item }}.conf
+  loop: "{{ apache_ports }}"
+  register: a2ensite_result
+  changed_when: "'Enabling site' in a2ensite_result.stdout"
+  notify: Restart apache
+- name: Disable default site
+  ansible.builtin.command:
+    cmd: a2dissite 000-default.conf
+  register: a2dissite_result
+  changed_when: "'Site 000-default disabled' in a2dissite_result.stdout"
+- name: Start apache2 service
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true

@@ -1,0 +1,11 @@
+vm1_ip: 192.168.56.101
+vm2_ip: 192.168.56.102
+ansible_user: kunetskiy
+ansible_become: true
+ansible_become_method: sudo
+ansible_python_interpreter: /usr/bin/python3
+
+logstash_port: 5044
+
+node_exporter_version: "1.8.2"
+prometheus_version: "2.51.2"

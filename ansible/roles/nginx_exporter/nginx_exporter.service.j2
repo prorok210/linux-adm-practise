@@ -1,0 +1,14 @@
+[Unit]
+Description=Nginx Node Exporter
+After=network.target
+
+[Service]
+User=nginx_exporter
+Group=nginx_exporter
+Type=simple
+ExecStart=/usr/local/bin/nginx-prometheus-exporter
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
